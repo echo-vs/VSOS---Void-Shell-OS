@@ -8,7 +8,7 @@ CFLAGS = -m32 -ffreestanding -fno-pie -fno-stack-protector -mgeneral-regs-only -
 LDFLAGS = -m elf_i386 -T link.ld --oformat binary
 
 KERNEL_C_OBJS = kernel/kernel.o kernel/screen.o kernel/idt.o kernel/pic.o kernel/keyboard.o \
-                kernel/config.o kernel/vfs.o kernel/shell.o kernel/string.o kernel/editor.o
+                kernel/config.o kernel/vfs.o kernel/shell.o kernel/string.o kernel/editor.o kernel/fs.o
 KERNEL_ASM_OBJS = kernel/kernel_entry.o kernel/idt_load.o
 KERNEL_DATA_OBJS = kernel/config_blob.o
 
