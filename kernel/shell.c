@@ -12,6 +12,19 @@ static void skip_spaces(const char **s) {
     while (**s == ' ') (*s)++;
 }
 
+#define HISTORY_SIZE 10
+static char history[HISTORY_SIZE][64];
+static int history_count = 0;
+static int history_next = 0;
+
+static void history_add(const char *line) {
+    int i = 0;
+    while (line[i] && i < 63) { history[history_next][i] = line[i]; i++; }
+    history[history_next][i] = 0;
+    history_next = (history_next + 1) % HISTORY_SIZE;
+    if (history_count < HISTORY_SIZE) history_count++;
+}
+
 static void cmd_help(const char *arg) {
     (void) arg;
     print_string("available commands:\n", 0x0f);
@@ -26,6 +39,11 @@ static void cmd_help(const char *arg) {
     print_string("  mkdir DIR        create a directory (in-memory)\n", 0x07);
     print_string("  cd DIR           change directory (.. or / work too)\n", 0x07);
     print_string("  fetch            show system info\n", 0x07);
+    print_string("  pwd              print current directory\n", 0x07);
+    print_string("  touch FILE       create an empty file\n", 0x07);
+    print_string("  rm FILE          remove a file\n", 0x07);
+    print_string("  rmdir DIR        remove an empty directory\n", 0x07);
+    print_string("  history          show recently run commands\n", 0x07);
     print_string("  help             this message\n", 0x07);
 }
 
@@ -84,10 +102,61 @@ static void cmd_fetch(const char *arg) {
     print_string("|    VSOS     |\n", 0x0b);
     print_string("+-------------+\n", 0x0b);
     print_string("hostname : ", 0x0f); print_string(vsos_config.hostname, 0x07); print_string("\n", 0x0f);
-    print_string("os       : ", 0x0f); print_string("VSOS 1.1 (Void Shell OS)\n", 0x07);
+    print_string("os       : ", 0x0f); print_string("VSOS 1.2 (Void Shell OS)\n", 0x07);
     print_string("kernel   : ", 0x0f); print_string("custom, i386\n", 0x07);
     print_string("shell    : ", 0x0f); print_string("vsh (built-in)\n", 0x07);
     print_string("cwd      : ", 0x0f); print_string(path, 0x07); print_string("\n", 0x0f);
+}
+
+static void cmd_pwd(const char *arg) {
+    (void) arg;
+    char path[64];
+    fs_pwd(path, sizeof(path));
+    print_string(path, 0x0f);
+    print_string("\n", 0x0f);
+}
+
+static void cmd_touch(const char *arg) {
+    skip_spaces(&arg);
+    if (*arg == 0) {
+        print_string("touch: missing operand\n", 0x0c);
+        return;
+    }
+    if (!vedit_touch(arg)) {
+        print_string("touch: no free file slots\n", 0x0c);
+    }
+}
+
+static void cmd_rm(const char *arg) {
+    skip_spaces(&arg);
+    if (*arg == 0) {
+        print_string("rm: missing operand\n", 0x0c);
+        return;
+    }
+    if (!vedit_remove(arg)) {
+        print_string("rm: no such file\n", 0x0c);
+    }
+}
+
+static void cmd_rmdir(const char *arg) {
+    skip_spaces(&arg);
+    if (*arg == 0) {
+        print_string("rmdir: missing operand\n", 0x0c);
+        return;
+    }
+    if (!fs_rmdir(arg)) {
+        print_string("rmdir: no such directory, or not empty\n", 0x0c);
+    }
+}
+
+static void cmd_history(const char *arg) {
+    (void) arg;
+    int start = (history_next - history_count + HISTORY_SIZE) % HISTORY_SIZE;
+    for (int i = 0; i < history_count; i++) {
+        int idx = (start + i) % HISTORY_SIZE;
+        print_string(history[idx], 0x07);
+        print_string("\n", 0x07);
+    }
 }
 
 static void cmd_cat(const char *arg) {
@@ -114,7 +183,7 @@ static void cmd_echo(const char *arg) {
 
 static void cmd_uname(const char *arg) {
     (void) arg;
-    print_string("VSOS 1.1 (Void Shell OS) i386\n", 0x0f);
+    print_string("VSOS 1.2 (Void Shell OS) i386\n", 0x0f);
 }
 
 static void cmd_whoami(const char *arg) {
@@ -165,6 +234,11 @@ static const shell_cmd_t commands[] = {
     { "mkdir",  cmd_mkdir },
     { "cd",     cmd_cd },
     { "fetch",  cmd_fetch },
+    { "pwd",    cmd_pwd },
+    { "touch",  cmd_touch },
+    { "rm",     cmd_rm },
+    { "rmdir",  cmd_rmdir },
+    { "history", cmd_history },
 };
 static const int command_count = sizeof(commands) / sizeof(commands[0]);
 
@@ -176,6 +250,8 @@ void shell_init(void) {
 void shell_execute(const char *line) {
     skip_spaces(&line);
     if (*line == 0) return;
+
+    history_add(line);
 
     int name_len = 0;
     while (line[name_len] && line[name_len] != ' ') name_len++;

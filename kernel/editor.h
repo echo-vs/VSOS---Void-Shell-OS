@@ -15,6 +15,12 @@ extern vedit_file_t vedit_files[EDITOR_MAX_FILES];
 /* opens (or creates) a named in-memory file and runs the line editor on it */
 void vedit_run(const char *filename);
 
+/* creates an empty file if it doesn't already exist; 1 = created/exists, 0 = no space */
+int vedit_touch(const char *filename);
+
+/* removes a file; 1 = removed, 0 = not found */
+int vedit_remove(const char *filename);
+
 /* returns the file's content, or 0 (NULL) if it doesn't exist */
 const char *vedit_read(const char *filename);
 
