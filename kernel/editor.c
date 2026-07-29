@@ -41,6 +41,19 @@ const char *vedit_read(const char *name) {
     return f ? f->content : 0;
 }
 
+int vedit_touch(const char *name) {
+    return find_or_create(name) ? 1 : 0;
+}
+
+int vedit_remove(const char *name) {
+    vedit_file_t *f = find_file(name);
+    if (!f) return 0;
+    f->used = 0;
+    f->name[0] = 0;
+    f->content[0] = 0;
+    return 1;
+}
+
 static int wait_for_line(char *line, int max_len) {
     int got = 0;
     do {

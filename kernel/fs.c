@@ -42,6 +42,27 @@ int fs_mkdir(const char *name) {
     return 0;   /* out of node slots */
 }
 
+int fs_rmdir(const char *name) {
+    int target = -1;
+    for (int i = 0; i < FS_MAX_NODES; i++) {
+        if (fs_nodes[i].used && fs_nodes[i].is_dir && fs_nodes[i].parent == fs_current &&
+            vs_strcmp(fs_nodes[i].name, name) == 0) {
+            target = i;
+            break;
+        }
+    }
+    if (target < 0) return 0;
+
+    for (int i = 0; i < FS_MAX_NODES; i++) {
+        if (fs_nodes[i].used && fs_nodes[i].parent == target && i != target) {
+            return 0;   /* not empty */
+        }
+    }
+
+    fs_nodes[target].used = 0;
+    return 1;
+}
+
 int fs_cd(const char *name) {
     if (vs_strcmp(name, "/") == 0) { fs_current = 0; return 1; }
     if (vs_strcmp(name, "..") == 0) {
