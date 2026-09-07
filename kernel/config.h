@@ -4,6 +4,7 @@
 typedef struct {
     char hostname[32];
     char motd[128];
+    char version[16];
 } vsos_config_t;
 
 extern vsos_config_t vsos_config;

@@ -42,6 +42,7 @@ qemu-system-i386 -drive format=raw,file=os-image.bin -no-reboot -no-shutdown
 - [x] **Stage 2** — booting kernel.bin from disk (LBA, `int 0x13 ah=42h'), switching to 32-bit protected mode (GDT), transfer of control to the C-core
 - [x] **Stage 3** — IDT/interrupts, PIC remap, PS/2 keyboard
 - [x] **Stage 4** — unix-style shell (`ls`, `cat`, `echo`, `uname`, `whoami`, `reboot`, `help`, `clear`) + declarative `vsos.conf`, embedded in the kernel via `objcopy' and applied at boot
+- [x] **1.2 refresh** — `version` now lives in `vsos.conf` (declarative, not hardcoded), revamped `fetch` (dir/file counts, hostname, cwd), categorized `help`, multi-file `cat`, friendlier prompt (`host:cwd # `) and boot banner
 - [ ] **Stage 5** — the real file system on disk (now VFS is a stub in memory)
 — [ ] **Stage 6** - processes / memory (malloc, padding)
 - [ ] **Package Manager** — offline via the second disk (`.vpkg`), see the ideas in the project notes

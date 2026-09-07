@@ -14,41 +14,56 @@ static void skip_spaces(const char **s) {
 
 static void cmd_help(const char *arg) {
     (void) arg;
-    print_string("available commands:\n", 0x0f);
-    print_string("  ls               list files\n", 0x07);
-    print_string("  cat FILE         print file contents\n", 0x07);
-    print_string("  echo TEXT        print text\n", 0x07);
-    print_string("  clear            clear the screen\n", 0x07);
-    print_string("  uname            kernel info\n", 0x07);
-    print_string("  whoami           current user\n", 0x07);
-    print_string("  reboot           restart the machine\n", 0x07);
-    print_string("  vedit FILE       minimal in-memory text editor\n", 0x07);
+    print_string("VSOS shell - available commands:\n\n", 0x0f);
+
+    print_string("files & fs\n", 0x0e);
+    print_string("  ls               list files and directories\n", 0x07);
+    print_string("  cat FILE...      print contents of one or more files\n", 0x07);
     print_string("  mkdir DIR        create a directory (in-memory)\n", 0x07);
     print_string("  cd DIR           change directory (.. or / work too)\n", 0x07);
+    print_string("  vedit FILE       minimal in-memory text editor\n\n", 0x07);
+
+    print_string("system\n", 0x0e);
+    print_string("  uname            kernel info\n", 0x07);
+    print_string("  whoami           current user\n", 0x07);
     print_string("  fetch            show system info\n", 0x07);
+    print_string("  clear            clear the screen\n", 0x07);
+    print_string("  reboot           restart the machine\n\n", 0x07);
+
+    print_string("shell\n", 0x0e);
+    print_string("  echo TEXT        print text\n", 0x07);
     print_string("  help             this message\n", 0x07);
 }
 
 static void cmd_ls(const char *arg) {
     (void) arg;
+    int printed = 0;
+
     int children[FS_MAX_NODES];
     int n = fs_list_children(children, FS_MAX_NODES);
     for (int i = 0; i < n; i++) {
         print_string(fs_nodes[children[i]].name, 0x09);
         print_string("/  ", 0x0f);
+        printed = 1;
     }
 
     if (fs_current == 0) {
         for (int i = 0; i < vfs_list_count; i++) {
             print_string(vfs_list[i], 0x0f);
             print_string("  ", 0x0f);
+            printed = 1;
         }
         for (int i = 0; i < EDITOR_MAX_FILES; i++) {
             if (vedit_files[i].used) {
                 print_string(vedit_files[i].name, 0x0e);
                 print_string("  ", 0x0f);
+                printed = 1;
             }
         }
+    }
+
+    if (!printed) {
+        print_string("(empty)", 0x08);
     }
     print_string("\n", 0x0f);
 }
@@ -80,14 +95,41 @@ static void cmd_fetch(const char *arg) {
     char path[64];
     fs_pwd(path, sizeof(path));
 
-    print_string("+-------------+\n", 0x0b);
-    print_string("|    VSOS     |\n", 0x0b);
-    print_string("+-------------+\n", 0x0b);
-    print_string("hostname : ", 0x0f); print_string(vsos_config.hostname, 0x07); print_string("\n", 0x0f);
-    print_string("os       : ", 0x0f); print_string("VSOS 1.1 (Void Shell OS)\n", 0x07);
-    print_string("kernel   : ", 0x0f); print_string("custom, i386\n", 0x07);
-    print_string("shell    : ", 0x0f); print_string("vsh (built-in)\n", 0x07);
-    print_string("cwd      : ", 0x0f); print_string(path, 0x07); print_string("\n", 0x0f);
+    int dirs = 0;
+    for (int i = 0; i < FS_MAX_NODES; i++) {
+        if (fs_nodes[i].used) dirs++;
+    }
+    int files = vfs_list_count;
+    for (int i = 0; i < EDITOR_MAX_FILES; i++) {
+        if (vedit_files[i].used) files++;
+    }
+    char numbuf[11];
+
+    print_string("   +------------------+\n", 0x0b);
+    print_string("   |       VSOS       |\n", 0x0f);
+    print_string("   |   Void Shell OS  |\n", 0x0b);
+    print_string("   +------------------+\n\n", 0x0b);
+
+    print_string("os     ", 0x09); print_string(": ", 0x08);
+    print_string("VSOS ", 0x07); print_string(vsos_config.version, 0x07); print_string(" (Void Shell OS)\n", 0x07);
+
+    print_string("kernel ", 0x0a); print_string(": ", 0x08);
+    print_string("custom, i386\n", 0x07);
+
+    print_string("shell  ", 0x0b); print_string(": ", 0x08);
+    print_string("vsh (built-in)\n", 0x07);
+
+    print_string("host   ", 0x0d); print_string(": ", 0x08);
+    print_string(vsos_config.hostname, 0x07); print_string("\n", 0x07);
+
+    print_string("cwd    ", 0x0e); print_string(": ", 0x08);
+    print_string(path, 0x07); print_string("\n", 0x07);
+
+    print_string("dirs   ", 0x0c); print_string(": ", 0x08);
+    vs_itoa((unsigned int) dirs, numbuf); print_string(numbuf, 0x07); print_string("\n", 0x07);
+
+    print_string("files  ", 0x09); print_string(": ", 0x08);
+    vs_itoa((unsigned int) files, numbuf); print_string(numbuf, 0x07); print_string("\n", 0x07);
 }
 
 static void cmd_cat(const char *arg) {
@@ -96,14 +138,30 @@ static void cmd_cat(const char *arg) {
         print_string("cat: missing file operand\n", 0x0c);
         return;
     }
-    const char *content = vedit_read(arg);
-    if (!content) content = vfs_read(arg);
-    if (!content) {
-        print_string("cat: no such file\n", 0x0c);
-        return;
+
+    while (*arg != 0) {
+        int len = 0;
+        while (arg[len] && arg[len] != ' ') len++;
+
+        char name[32];
+        int n = len < (int) sizeof(name) - 1 ? len : (int) sizeof(name) - 1;
+        for (int i = 0; i < n; i++) name[i] = arg[i];
+        name[n] = 0;
+
+        const char *content = vedit_read(name);
+        if (!content) content = vfs_read(name);
+        if (!content) {
+            print_string("cat: ", 0x0c);
+            print_string(name, 0x0c);
+            print_string(": no such file\n", 0x0c);
+        } else {
+            print_string(content, 0x07);
+            print_string("\n", 0x07);
+        }
+
+        arg += len;
+        skip_spaces(&arg);
     }
-    print_string(content, 0x07);
-    print_string("\n", 0x07);
 }
 
 static void cmd_echo(const char *arg) {
@@ -114,7 +172,9 @@ static void cmd_echo(const char *arg) {
 
 static void cmd_uname(const char *arg) {
     (void) arg;
-    print_string("VSOS 1.1 (Void Shell OS) i386\n", 0x0f);
+    print_string("VSOS ", 0x0f);
+    print_string(vsos_config.version, 0x0f);
+    print_string(" (Void Shell OS) i386\n", 0x0f);
 }
 
 static void cmd_whoami(const char *arg) {

@@ -10,6 +10,7 @@ extern char _binary_vsos_conf_end[];
 vsos_config_t vsos_config = {
     .hostname = "vsos",
     .motd = "Welcome to VSOS",
+    .version = "1.2",
 };
 
 static void trim_copy(char *dst, const char *src, const char *line_end, int max_len) {
@@ -48,6 +49,8 @@ void config_load(void) {
             trim_copy(vsos_config.hostname, value, line_end, sizeof(vsos_config.hostname));
         } else if (key_len == 4 && vs_strncmp(line_start, "motd", 4) == 0) {
             trim_copy(vsos_config.motd, value, line_end, sizeof(vsos_config.motd));
+        } else if (key_len == 7 && vs_strncmp(line_start, "version", 7) == 0) {
+            trim_copy(vsos_config.version, value, line_end, sizeof(vsos_config.version));
         }
     }
 }

@@ -18,3 +18,24 @@ unsigned int vs_strlen(const char *s) {
     while (s[n]) n++;
     return n;
 }
+
+void vs_itoa(unsigned int value, char *out) {
+    if (value == 0) {
+        out[0] = '0';
+        out[1] = 0;
+        return;
+    }
+
+    char tmp[11];
+    int i = 0;
+    while (value > 0 && i < 11) {
+        tmp[i++] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    int j = 0;
+    while (i > 0) {
+        out[j++] = tmp[--i];
+    }
+    out[j] = 0;
+}
