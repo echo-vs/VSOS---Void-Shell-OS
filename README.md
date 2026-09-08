@@ -20,9 +20,22 @@ cd VSOS
 make clean && make run
 ```
 
-Expected result in QEMU: screen clears, kernel greeting, `motd` from `vsos.conf', prompt `void>'.
+Expected result in QEMU: screen clears, kernel greeting, `motd` from `vsos.conf', prompt `void:/ #'.
 
-Check the commands: `help`, `ls', `cat vsos.conf`, `cat motd.txt `, `cat hostname`, `echo hello`, `uname`, `whoami`, `clear`, `reboot`.
+Your files live on a second disk, `fs.img`, created automatically on first build. `make clean` leaves it alone so files survive rebuilds; `make reset-fs` wipes it and re-seeds the defaults.
+
+### The kernel size ceiling (read this before adding code)
+
+`boot/disk_load.asm` loads a **fixed 30 sectors = 15360 bytes** into RAM. Anything past that is simply never in memory, so an oversized kernel doesn't fail loudly - it runs with its tail missing and misbehaves in baffling ways. This actually happened: the kernel reached 19452 bytes, and `command_count` (24 bytes past the cutoff) came up garbage, which silently broke only the *last* commands in the shell's table.
+
+Three things keep this in check now, and none should be removed casually:
+- the build **fails** if `kernel.bin` exceeds `KERNEL_MAX` (Makefile), and prints the overflow
+- `-Os` in `CFLAGS`: unoptimized builds are ~40% bigger, which is the difference between fitting and not
+- `link.ld` discards `.eh_frame` (~2.6KB of unwind tables a C kernel never reads)
+
+Raising the ceiling is not just a matter of bumping `dh`: reading past ~30 sectors with the current fixed head/cylinder CHS call has hung the loader in testing. That needs `int 13h ah=42h` (LBA) or multi-track handling first.
+
+Check the commands: `help`, `ls', `cat vsos.conf`, `cat motd.txt `, `cat hostname`, `echo hello`, `uname`, `whoami`, `mkdir`, `touch`, `rm`, `cd`, `vedit`, `sync`, `clear`, `reboot`. Try `mkdir docs && cd docs && touch notes.txt && vedit notes.txt`, then `reboot` and `cat docs/notes.txt` again — it's still there.
 
 ## Debugging (if something is hanging on loading)
 
@@ -33,7 +46,7 @@ There are checkpoints in `boot.asm` and `switch_to_pm.asm`:
 
 If one of these things does not appear, it means that it is hanging at this step. It is also useful to run with `-no-reboot -no-shutdown` to distinguish a real freeze from a QEMU silently restarting VM with a triple fold:
 ``
-qemu-system-i386 -drive format=raw,file=os-image.bin -no-reboot -no-shutdown
+qemu-system-i386 -drive format=raw,file=os-image.bin -drive format=raw,file=fs.img -no-reboot -no-shutdown
 ```
 
 ## Roadmap
@@ -43,7 +56,7 @@ qemu-system-i386 -drive format=raw,file=os-image.bin -no-reboot -no-shutdown
 - [x] **Stage 3** — IDT/interrupts, PIC remap, PS/2 keyboard
 - [x] **Stage 4** — unix-style shell (`ls`, `cat`, `echo`, `uname`, `whoami`, `reboot`, `help`, `clear`) + declarative `vsos.conf`, embedded in the kernel via `objcopy' and applied at boot
 - [x] **1.2 refresh** — `version` now lives in `vsos.conf` (declarative, not hardcoded), revamped `fetch` (dir/file counts, hostname, cwd), categorized `help`, multi-file `cat`, friendlier prompt (`host:cwd # `) and boot banner
-- [ ] **Stage 5** — the real file system on disk (now VFS is a stub in memory)
+- [x] **Stage 5** — a real filesystem: `fs.c` is now one unified tree where files carry actual content (no more separate `vedit`/`vfs` stubs), backed by a hand-written ATA PIO driver (`ata.c`, primary bus, LBA28). `mkdir`/`touch`/`rm`/`cat`/`cd` all take multi-level paths (`cd docs/notes`, `rm a/b/c.txt`). Every mutation auto-saves to disk (`sync` forces it manually); on boot, `fs_load()` restores the saved tree, or seeds default files on a blank disk. The tree lives on `fs.img`, a *second* virtual disk dedicated to the filesystem (primary IDE slave) - kept separate from the boot disk (`os-image.bin`) on purpose, since the real-mode loader depends on that disk's exact CHS geometry and growing/reusing it for filesystem data broke boot in testing. `make`/`make run` create `fs.img` once and `make clean` leaves it alone, so your files survive rebuilds
 — [ ] **Stage 6** - processes / memory (malloc, padding)
 - [ ] **Package Manager** — offline via the second disk (`.vpkg`), see the ideas in the project notes
 - [ ] **Network** — PCI enumeration → RTL8139 driver → ARP/IP/UDP → (someday) TCP
@@ -73,7 +86,10 @@ VSOS/
     ├── pic.h / pic.c
     ├── keyboard.h / keyboard.c
     ├── config.h / config.c
-    ├── vfs.h / vfs.c
+    ├── ata.h / ata.c        (ATA PIO disk driver)
+    ├── fs.h / fs.c          (the filesystem: tree + disk persistence)
+    ├── vfs.h / vfs.c        (seeds default files into fs.c on first boot)
+    ├── editor.h / editor.c  (vedit, works on fs.c files)
     ├── shell.h / shell.c
     └── string.h / string.c
 ```
@@ -83,5 +99,5 @@ VSOS/
 2. 'disk_load.asm` reads 60 sectors of kernel.bin into memory `0x1000` via LBA (`int 13h, ah=42h`).
 3. `switch_to_pm.asm': `lgdt', PE bit in `cr0', far jump → 32-bit protected mode.
 4. `kernel_entry.asm` calls `kernel_main()`(C).
-5. `kernel_main`: `idt_install()' → `pic_remap()` → `keyboard_install()` → `sti` → `config_load()` (parses `vsos.conf`) → `shell_init()` (prints motd) → main loop on `keyboard_read_line()' + `shell_execute()'.
+5. `kernel_main`: `config_load()` (parses `vsos.conf`) → `idt_install()' → `pic_remap()` → `keyboard_install()` → `sti` → `fs_init()` → `fs_load()` (restores the saved tree from disk via `ata.c`, or on a blank disk falls through to `vfs_seed()` + `fs_save()` to create the default files) → `shell_init()` (prints motd) → main loop on `keyboard_read_line()' + `shell_execute()'.
 # VSOS---Void-Shell-OS

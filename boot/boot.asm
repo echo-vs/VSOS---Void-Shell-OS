@@ -35,7 +35,13 @@ start:
 [BITS 16]
 load_kernel:
     mov bx, KERNEL_OFFSET
-    mov dh, 30                ; number of sectors to read (confirmed stable; kernel is ~6-7KB)
+    mov dh, 30                ; number of sectors to read (confirmed stable; kernel is ~6-7KB).
+                               ; NOTE: bumping this past 30 has hung boot at the 'D' checkpoint
+                               ; in testing (before even attempting a read) - suspect either this
+                               ; value or growing os-image.bin's size confuses the BIOS's CHS
+                               ; geometry translation for this disk. Left at the proven value; the
+                               ; filesystem now lives on a separate fs.img disk instead, addressed
+                               ; by kernel/ata.c via pure LBA, so it never has to touch this again.
     mov dl, [BOOT_DRIVE]
     call disk_load
     ret

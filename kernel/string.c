@@ -39,3 +39,53 @@ void vs_itoa(unsigned int value, char *out) {
     }
     out[j] = 0;
 }
+
+unsigned int vs_atoi(const char *s) {
+    while (*s == ' ') s++;
+    unsigned int n = 0;
+    while (*s >= '0' && *s <= '9') {
+        n = n * 10 + (unsigned int) (*s - '0');
+        s++;
+    }
+    return n;
+}
+
+/* --- freestanding libc shims ---
+ * The compiler emits calls to these on its own (see string.h), so they
+ * have to exist even where nothing in this codebase calls them by name.
+ */
+
+void *memset(void *dst, int c, __SIZE_TYPE__ n) {
+    unsigned char *d = (unsigned char *) dst;
+    for (__SIZE_TYPE__ i = 0; i < n; i++) d[i] = (unsigned char) c;
+    return dst;
+}
+
+void *memcpy(void *dst, const void *src, __SIZE_TYPE__ n) {
+    unsigned char *d = (unsigned char *) dst;
+    const unsigned char *s = (const unsigned char *) src;
+    for (__SIZE_TYPE__ i = 0; i < n; i++) d[i] = s[i];
+    return dst;
+}
+
+void *memmove(void *dst, const void *src, __SIZE_TYPE__ n) {
+    unsigned char *d = (unsigned char *) dst;
+    const unsigned char *s = (const unsigned char *) src;
+    if (d == s || n == 0) return dst;
+    if (d < s) {
+        for (__SIZE_TYPE__ i = 0; i < n; i++) d[i] = s[i];
+    } else {
+        /* overlapping with dst after src: copy back to front */
+        for (__SIZE_TYPE__ i = n; i > 0; i--) d[i - 1] = s[i - 1];
+    }
+    return dst;
+}
+
+int memcmp(const void *a, const void *b, __SIZE_TYPE__ n) {
+    const unsigned char *x = (const unsigned char *) a;
+    const unsigned char *y = (const unsigned char *) b;
+    for (__SIZE_TYPE__ i = 0; i < n; i++) {
+        if (x[i] != y[i]) return (int) x[i] - (int) y[i];
+    }
+    return 0;
+}

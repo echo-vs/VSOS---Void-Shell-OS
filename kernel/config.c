@@ -10,7 +10,7 @@ extern char _binary_vsos_conf_end[];
 vsos_config_t vsos_config = {
     .hostname = "vsos",
     .motd = "Welcome to VSOS",
-    .version = "1.2",
+    .version = "1.3",
 };
 
 static void trim_copy(char *dst, const char *src, const char *line_end, int max_len) {

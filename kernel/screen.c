@@ -2,7 +2,10 @@
 #include "screen.h"
 #include "io.h"
 
-#define VIDMEM ((char *) 0xb8000)
+/* volatile: these stores are the visible output of the kernel, but to the
+ * compiler they look like writes to ordinary memory that is never read
+ * back - with optimization on it would be free to drop or reorder them */
+#define VIDMEM ((volatile char *) 0xb8000)
 #define COLS 80
 #define ROWS 25
 

@@ -1,45 +1,13 @@
-/* editor.c — vedit: minimal in-memory line editor.
- * No disk filesystem exists yet (that's Stage 5), so "files" here live in a
- * small fixed set of RAM buffers. Once real disk I/O exists, vedit_run can
- * flush to disk instead without the shell-facing API changing.
+/* editor.c — vedit: a small line editor over fs.c files. Content is kept
+ * as one flat, '\n'-separated buffer (the same shape it's stored on disk
+ * in); "lines" aren't a separate data structure, just byte ranges found
+ * by scanning for '\n', addressed 1-indexed to match how they're shown.
  */
 #include "editor.h"
 #include "screen.h"
 #include "keyboard.h"
+#include "fs.h"
 #include "string.h"
-
-vedit_file_t vedit_files[EDITOR_MAX_FILES];
-
-static vedit_file_t *find_file(const char *name) {
-    for (int i = 0; i < EDITOR_MAX_FILES; i++) {
-        if (vedit_files[i].used && vs_strcmp(vedit_files[i].name, name) == 0) {
-            return &vedit_files[i];
-        }
-    }
-    return 0;
-}
-
-static vedit_file_t *find_or_create(const char *name) {
-    vedit_file_t *existing = find_file(name);
-    if (existing) return existing;
-
-    for (int i = 0; i < EDITOR_MAX_FILES; i++) {
-        if (!vedit_files[i].used) {
-            vedit_files[i].used = 1;
-            int j = 0;
-            while (name[j] && j < 15) { vedit_files[i].name[j] = name[j]; j++; }
-            vedit_files[i].name[j] = 0;
-            vedit_files[i].content[0] = 0;
-            return &vedit_files[i];
-        }
-    }
-    return 0;   /* out of slots */
-}
-
-const char *vedit_read(const char *name) {
-    vedit_file_t *f = find_file(name);
-    return f ? f->content : 0;
-}
 
 static int wait_for_line(char *line, int max_len) {
     int got = 0;
@@ -50,35 +18,181 @@ static int wait_for_line(char *line, int max_len) {
     return got;
 }
 
+/* finds the [start,end) byte range of 1-indexed line n; end sits just
+ * past the line's trailing '\n' if it has one, else at len. returns 0 if
+ * n is out of range. */
+static int find_line(const char *buf, int len, int n, int *start, int *end) {
+    if (n < 1) return 0;
+    int line = 1;
+    int i = 0;
+    while (i < len) {
+        int s = i;
+        while (i < len && buf[i] != '\n') i++;
+        int e = (i < len) ? i + 1 : i;
+        if (line == n) { *start = s; *end = e; return 1; }
+        line++;
+        i = e;
+    }
+    return 0;
+}
+
+/* replaces buf[s..e) with ins[0..ins_len), shifting the tail as needed;
+ * 0 if the result wouldn't fit in FS_FILE_SIZE */
+static int splice(char *buf, int *len, int s, int e, const char *ins, int ins_len) {
+    int old_span = e - s;
+    int new_len = *len - old_span + ins_len;
+    if (new_len >= FS_FILE_SIZE) return 0;
+
+    if (ins_len != old_span) {
+        int tail_len = *len - e;
+        if (ins_len < old_span) {
+            for (int i = 0; i < tail_len; i++) buf[s + ins_len + i] = buf[e + i];
+        } else {
+            for (int i = tail_len - 1; i >= 0; i--) buf[s + ins_len + i] = buf[e + i];
+        }
+    }
+    for (int i = 0; i < ins_len; i++) buf[s + i] = ins[i];
+    *len = new_len;
+    buf[*len] = 0;
+    return 1;
+}
+
+static void print_lines(const char *buf, int len) {
+    if (len == 0) {
+        print_string("  (empty)\n", 0x08);
+        return;
+    }
+    int n = 1;
+    int i = 0;
+    while (i < len) {
+        int s = i;
+        while (i < len && buf[i] != '\n') i++;
+        int line_len = i - s;
+        if (i < len) i++;
+
+        char numbuf[8];
+        vs_itoa((unsigned int) n, numbuf);
+        print_string(numbuf, 0x08);
+        print_string(": ", 0x08);
+        for (int k = 0; k < line_len; k++) print_char(buf[s + k], 0x07);
+        print_string("\n", 0x07);
+        n++;
+    }
+}
+
+static void print_help(void) {
+    print_string("  <text>   append a line\n", 0x07);
+    print_string("  :p       print the file with line numbers\n", 0x07);
+    print_string("  :d N     delete line N\n", 0x07);
+    print_string("  :e N     replace line N (prompts for new text)\n", 0x07);
+    print_string("  :c       clear the whole file\n", 0x07);
+    print_string("  :help    this message\n", 0x07);
+    print_string("  :w / --  save and exit\n", 0x07);
+    print_string("  :q       exit without saving\n", 0x07);
+}
+
 void vedit_run(const char *filename) {
-    vedit_file_t *f = find_or_create(filename);
-    if (!f) {
-        print_string("vedit: no free file slots\n", 0x0c);
+    if (!fs_touch(filename)) {
+        print_string("vedit: cannot open '", 0x0c);
+        print_string(filename, 0x0c);
+        print_string("' (it's a directory, bad path, or the tree is full)\n", 0x0c);
         return;
     }
 
+    char buf[FS_FILE_SIZE];
+    int len = 0;
+    const char *existing = fs_read(filename);
+    if (existing) {
+        len = (int) vs_strlen(existing);
+        if (len > FS_FILE_SIZE - 1) len = FS_FILE_SIZE - 1;
+        for (int i = 0; i < len; i++) buf[i] = existing[i];
+    }
+    buf[len] = 0;
+
     print_string("vedit: editing '", 0x0f);
     print_string(filename, 0x0f);
-    print_string("' - type a line with just -- to save and exit\n", 0x0f);
-
-    int len = vs_strlen(f->content);
+    print_string("' - :help for commands\n", 0x0f);
+    print_lines(buf, len);
 
     char line[128];
     while (1) {
         print_string("vedit> ", 0x0b);
         wait_for_line(line, sizeof(line));
 
-        if (vs_strcmp(line, "--") == 0) break;
+        if (vs_strcmp(line, "--") == 0 || vs_strcmp(line, ":w") == 0) {
+            if (fs_write(filename, buf, (unsigned int) len)) {
+                print_string("vedit: saved\n", 0x0a);
+            } else {
+                print_string("vedit: save failed\n", 0x0c);
+            }
+            return;
+        }
 
-        int line_len = vs_strlen(line);
-        if (len + line_len + 2 < EDITOR_FILE_SIZE) {
-            for (int i = 0; i < line_len; i++) f->content[len++] = line[i];
-            f->content[len++] = '\n';
-            f->content[len] = 0;
+        if (vs_strcmp(line, ":q") == 0) {
+            print_string("vedit: quit without saving\n", 0x0e);
+            return;
+        }
+
+        if (vs_strcmp(line, ":p") == 0) {
+            print_lines(buf, len);
+            continue;
+        }
+
+        if (vs_strcmp(line, ":c") == 0) {
+            len = 0;
+            buf[0] = 0;
+            print_string("vedit: cleared\n", 0x0e);
+            continue;
+        }
+
+        if (vs_strcmp(line, ":help") == 0 || vs_strcmp(line, ":h") == 0) {
+            print_help();
+            continue;
+        }
+
+        if (vs_strncmp(line, ":d ", 3) == 0) {
+            int n = (int) vs_atoi(line + 3);
+            int s, e;
+            if (find_line(buf, len, n, &s, &e)) {
+                splice(buf, &len, s, e, "", 0);
+                print_string("vedit: deleted line\n", 0x0e);
+            } else {
+                print_string("vedit: no such line\n", 0x0c);
+            }
+            continue;
+        }
+
+        if (vs_strncmp(line, ":e ", 3) == 0) {
+            int n = (int) vs_atoi(line + 3);
+            int s, e;
+            if (!find_line(buf, len, n, &s, &e)) {
+                print_string("vedit: no such line\n", 0x0c);
+                continue;
+            }
+            print_string("new text> ", 0x0b);
+            char newline[128];
+            wait_for_line(newline, sizeof(newline));
+            int nl_len = (int) vs_strlen(newline);
+
+            char ins[130];
+            for (int i = 0; i < nl_len; i++) ins[i] = newline[i];
+            ins[nl_len] = '\n';
+
+            if (splice(buf, &len, s, e, ins, nl_len + 1)) {
+                print_string("vedit: line replaced\n", 0x0e);
+            } else {
+                print_string("vedit: replacement too big, line unchanged\n", 0x0c);
+            }
+            continue;
+        }
+
+        int line_len = (int) vs_strlen(line);
+        if (len + line_len + 2 < FS_FILE_SIZE) {
+            for (int i = 0; i < line_len; i++) buf[len++] = line[i];
+            buf[len++] = '\n';
+            buf[len] = 0;
         } else {
             print_string("vedit: file full, line dropped\n", 0x0c);
         }
     }
-
-    print_string("vedit: saved\n", 0x0a);
 }

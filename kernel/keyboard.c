@@ -16,8 +16,11 @@ static const char scancode_ascii[128] = {
     '*', 0, ' ', 0,
 };
 
-static char line_buf[LINE_BUF_SIZE];
-static int line_len = 0;
+/* all three are written by keyboard_handler (an IRQ that fires between
+ * any two instructions) and read by normal kernel code, so none of them
+ * may be cached in a register across the wait loops */
+static volatile char line_buf[LINE_BUF_SIZE];
+static volatile int line_len = 0;
 static volatile int line_ready = 0;
 
 struct interrupt_frame;
