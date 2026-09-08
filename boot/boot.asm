@@ -35,20 +35,27 @@ start:
 [BITS 16]
 load_kernel:
     mov bx, KERNEL_OFFSET
-    mov dh, 30                ; number of sectors to read (confirmed stable; kernel is ~6-7KB).
-                               ; NOTE: bumping this past 30 has hung boot at the 'D' checkpoint
-                               ; in testing (before even attempting a read) - suspect either this
-                               ; value or growing os-image.bin's size confuses the BIOS's CHS
-                               ; geometry translation for this disk. Left at the proven value; the
-                               ; filesystem now lives on a separate fs.img disk instead, addressed
-                               ; by kernel/ata.c via pure LBA, so it never has to touch this again.
+    ; Sectors of kernel to load (must match KERNEL_MAX in the Makefile:
+    ; N * 512). 30 was the old ceiling, imposed by CHS reads that could
+    ; only reach the first track; disk_load.asm now prefers LBA, which has
+    ; no such limit.
+    ;
+    ; What limits it now is memory, not the disk: the kernel lands at
+    ; KERNEL_OFFSET (0x1000) and this loader plus its stack live at
+    ; 0x7C00. 48 sectors fills 0x1000..0x7000, leaving 3KB of headroom
+    ; below 0x7C00 for the stack the BIOS calls use. Going much past this
+    ; would have the loader overwrite itself mid-read. To grow further the
+    ; kernel has to be loaded above the 1MB line instead.
+    mov dh, 48
     mov dl, [BOOT_DRIVE]
     call disk_load
     ret
 
 BOOT_DRIVE: db 0
-MSG_REAL_MODE: db "VSOS - Void Shell OS", 13, 10, "loading kernel...", 13, 10, 0
-MSG_KERNEL_OK: db "kernel read OK, entering protected mode...", 13, 10, 0
+; kept short on purpose: the whole boot sector is 512 bytes, and the
+; kernel prints its own banner a moment later anyway
+MSG_REAL_MODE: db "VSOS loading...", 13, 10, 0
+MSG_KERNEL_OK: db "kernel read OK, entering PM", 13, 10, 0
 
 ; pad to 510 bytes, then boot signature
 times 510-($-$$) db 0

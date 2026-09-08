@@ -16,8 +16,11 @@ CFLAGS = -m32 -ffreestanding -fno-pie -fno-stack-protector -mgeneral-regs-only \
 LDFLAGS = -m elf_i386 -T link.ld --oformat binary
 
 # Bytes of kernel the bootloader actually copies into RAM: must stay in
-# sync with `mov dh, N` in boot/boot.asm (N sectors * 512).
-KERNEL_MAX = 15360
+# sync with `mov dh, N` in boot/boot.asm (N sectors * 512). 48 * 512.
+# The cap is now memory, not the disk: the kernel loads at 0x1000 and the
+# loader's own code and stack sit at 0x7C00, so the image has to stop
+# short of that. See the comment on `mov dh` in boot/boot.asm.
+KERNEL_MAX = 24576
 
 KERNEL_C_OBJS = kernel/kernel.o kernel/screen.o kernel/idt.o kernel/pic.o kernel/keyboard.o \
                 kernel/config.o kernel/vfs.o kernel/shell.o kernel/string.o kernel/editor.o kernel/fs.o \

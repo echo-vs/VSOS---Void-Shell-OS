@@ -26,21 +26,26 @@ Your files live on a second disk, `fs.img`, created automatically on first build
 
 ### The kernel size ceiling (read this before adding code)
 
-`boot/disk_load.asm` loads a **fixed 30 sectors = 15360 bytes** into RAM. Anything past that is simply never in memory, so an oversized kernel doesn't fail loudly - it runs with its tail missing and misbehaves in baffling ways. This actually happened: the kernel reached 19452 bytes, and `command_count` (24 bytes past the cutoff) came up garbage, which silently broke only the *last* commands in the shell's table.
+`boot/disk_load.asm` loads a **fixed 48 sectors = 24576 bytes** into RAM. Anything past that is simply never in memory, so an oversized kernel doesn't fail loudly - it runs with its tail missing and misbehaves in baffling ways. This actually happened: the kernel reached 19452 bytes against a then-15360-byte limit, and `command_count` (24 bytes past the cutoff) came up garbage, which silently broke only the *last* commands in the shell's table.
 
-Three things keep this in check now, and none should be removed casually:
+Three things keep this in check, and none should be removed casually:
 - the build **fails** if `kernel.bin` exceeds `KERNEL_MAX` (Makefile), and prints the overflow
 - `-Os` in `CFLAGS`: unoptimized builds are ~40% bigger, which is the difference between fitting and not
 - `link.ld` discards `.eh_frame` (~2.6KB of unwind tables a C kernel never reads)
 
-Raising the ceiling is not just a matter of bumping `dh`: reading past ~30 sectors with the current fixed head/cylinder CHS call has hung the loader in testing. That needs `int 13h ah=42h` (LBA) or multi-track handling first.
+The limit used to be 30 sectors, and it was a *disk* limit: the loader read via CHS with head and cylinder pinned to 0, so it could only ever reach the first track, and asking for 60 sectors hung it. It now prefers `int 13h ah=42h` (LBA), which addresses the disk as a flat run of sectors and has no such ceiling.
+
+What caps it at 48 now is **memory**, not the disk. The kernel lands at `0x1000` and the loader's own code and stack live at `0x7C00`, so the image must stop short of that: 48 sectors fills `0x1000..0x7000` and leaves 3KB for the stack. Raising it further means loading the kernel above the 1MB line instead, which needs unreal mode or a copy after the switch to protected mode.
 
 Check the commands: `help`, `ls', `cat vsos.conf`, `cat motd.txt `, `cat hostname`, `echo hello`, `uname`, `whoami`, `mkdir`, `touch`, `rm`, `cd`, `vedit`, `sync`, `clear`, `reboot`. Try `mkdir docs && cd docs && touch notes.txt && vedit notes.txt`, then `reboot` and `cat docs/notes.txt` again — it's still there.
 
 ## Debugging (if something is hanging on loading)
 
-There are checkpoints in `boot.asm` and `switch_to_pm.asm`:
-- text `"kernel read OK, entering protected mode..."` — is printed if the disk has been read successfully
+There are checkpoints in `disk_load.asm`, `boot.asm` and `switch_to_pm.asm`. They print in this order, so the last letter you see is the step it died on:
+- `D` — entered `disk_load`
+- `L` or `C` — which read path was chosen: `L` is `int 13h ah=42h` (LBA, the normal one), `C` is the old CHS fallback, which can only reach the first ~30 sectors and will likely then fail at `E`
+- `A` — all sectors read, or `E` — the BIOS reported a read error
+- text `"kernel read OK, entering PM"` — the loader finished and is about to switch modes
 - the letters `PM` in the upper-left corner of the screen (yellow) — if you are in protected mode
 - the letter `K` next to it is right before the jump into the core
 
