@@ -6,6 +6,7 @@
 #include "keyboard.h"
 #include "config.h"
 #include "shell.h"
+#include "readline.h"
 #include "fs.h"
 #include "vfs.h"
 
@@ -40,14 +41,14 @@ void kernel_main(void) {
         fs_save();
     }
     shell_init();
-    print_prompt();
+
+    /* completion redraws the prompt after listing its options */
+    readline_set_prompt(print_prompt);
 
     char line[256];
     while (1) {
-        if (keyboard_read_line(line, sizeof(line))) {
-            shell_execute(line);
-            print_prompt();
-        }
-        __asm__ volatile ("hlt");
+        print_prompt();
+        readline(line, sizeof(line), RL_HISTORY | RL_COMPLETE);
+        shell_execute(line);
     }
 }

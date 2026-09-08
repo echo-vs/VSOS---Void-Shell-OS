@@ -4,6 +4,7 @@
 #include "config.h"
 #include "editor.h"
 #include "fs.h"
+#include "snake.h"
 #include "string.h"
 #include "io.h"
 
@@ -225,29 +226,46 @@ static void cmd_vedit(const char *arg) {
     vedit_run(arg);
 }
 
+static void cmd_snakeplay(const char *arg) {
+    (void) arg;
+    snake_run();
+}
+
 typedef struct {
     const char *name;
     void (*fn)(const char *arg);
+    int hidden;                 /* kept out of `help` and out of completion */
 } shell_cmd_t;
 
 static const shell_cmd_t commands[] = {
-    { "help",   cmd_help },
-    { "ls",     cmd_ls },
-    { "cat",    cmd_cat },
-    { "echo",   cmd_echo },
-    { "clear",  cmd_clear },
-    { "uname",  cmd_uname },
-    { "whoami", cmd_whoami },
-    { "reboot", cmd_reboot },
-    { "vedit",  cmd_vedit },
-    { "mkdir",  cmd_mkdir },
-    { "touch",  cmd_touch },
-    { "rm",     cmd_rm },
-    { "cd",     cmd_cd },
-    { "sync",   cmd_sync },
-    { "fetch",  cmd_fetch },
+    { "help",   cmd_help,   0 },
+    { "ls",     cmd_ls,     0 },
+    { "cat",    cmd_cat,    0 },
+    { "echo",   cmd_echo,   0 },
+    { "clear",  cmd_clear,  0 },
+    { "uname",  cmd_uname,  0 },
+    { "whoami", cmd_whoami, 0 },
+    { "reboot", cmd_reboot, 0 },
+    { "vedit",  cmd_vedit,  0 },
+    { "mkdir",  cmd_mkdir,  0 },
+    { "touch",  cmd_touch,  0 },
+    { "rm",     cmd_rm,     0 },
+    { "cd",     cmd_cd,     0 },
+    { "sync",   cmd_sync,   0 },
+    { "fetch",  cmd_fetch,  0 },
+    { "snakeplay", cmd_snakeplay, 1 },
 };
 static const int command_count = sizeof(commands) / sizeof(commands[0]);
+
+const char *shell_command_name(int index) {
+    int seen = 0;
+    for (int c = 0; c < command_count; c++) {
+        if (commands[c].hidden) continue;
+        if (seen == index) return commands[c].name;
+        seen++;
+    }
+    return 0;
+}
 
 void shell_init(void) {
     print_string(vsos_config.motd, 0x0a);

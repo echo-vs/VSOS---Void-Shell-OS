@@ -63,6 +63,13 @@ void print_char(char c, unsigned char color) {
     update_hw_cursor();
 }
 
+void print_char_at(int row, int col, char c, unsigned char color) {
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+    int offset = (row * COLS + col) * 2;
+    VIDMEM[offset] = c;
+    VIDMEM[offset + 1] = color;
+}
+
 void print_string(const char *str, unsigned char color) {
     int i = 0;
     while (str[i] != 0) {

@@ -5,17 +5,14 @@
  */
 #include "editor.h"
 #include "screen.h"
-#include "keyboard.h"
+#include "readline.h"
 #include "fs.h"
 #include "string.h"
 
-static int wait_for_line(char *line, int max_len) {
-    int got = 0;
-    do {
-        got = keyboard_read_line(line, max_len);
-        if (!got) { __asm__ volatile ("hlt"); }
-    } while (!got);
-    return got;
+/* plain input on purpose: no completion (you're typing prose, not
+ * commands) and no history (it belongs to the shell, not to a file) */
+static void wait_for_line(char *line, int max_len) {
+    readline(line, max_len, 0);
 }
 
 /* finds the [start,end) byte range of 1-indexed line n; end sits just
