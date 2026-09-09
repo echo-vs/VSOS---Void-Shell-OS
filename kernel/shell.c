@@ -24,7 +24,7 @@ static void cmd_help(const char *arg) {
     print_string("  rm FILE|DIR      remove a file or empty directory\n", 0x07);
     print_string("  mkdir DIR        create a directory\n", 0x07);
     print_string("  cd DIR           change directory (.. or / work too)\n", 0x07);
-    print_string("  vedit FILE       line editor (:p :d :e :c :q, :help inside)\n", 0x07);
+    print_string("  vedit FILE       line editor (:p :i :e :d :s :q, :help inside)\n", 0x07);
     print_string("  sync             flush the filesystem to disk now\n\n", 0x07);
 
     print_string("system\n", 0x0e);

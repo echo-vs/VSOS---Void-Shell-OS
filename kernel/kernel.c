@@ -10,6 +10,40 @@
 #include "fs.h"
 #include "vfs.h"
 
+/* The VSOS wordmark, one glyph per string literal so the letters stay
+ * readable here and the spacing can't be miscounted. '#' is drawn as
+ * CP437 0xDB, the full block: in VGA text mode that gives solid strokes
+ * instead of a hash pattern. Two columns per pixel, because text cells
+ * are much taller than they are wide. */
+static const char *const logo[] = {
+    "\xDB\xDB      \xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB",
+    "\xDB\xDB      \xDB\xDB" "  " "\xDB\xDB        " "  " "\xDB\xDB      \xDB\xDB" "  " "\xDB\xDB        ",
+    "\xDB\xDB      \xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB      \xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB",
+    "  \xDB\xDB  \xDB\xDB  " "  " "        \xDB\xDB" "  " "\xDB\xDB      \xDB\xDB" "  " "        \xDB\xDB",
+    "    \xDB\xDB    " "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB" "  " "\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB",
+};
+#define LOGO_ROWS 5
+#define LOGO_WIDTH 46
+
+static void print_banner(void) {
+    for (int r = 0; r < LOGO_ROWS; r++) {
+        print_string("   ", 0x0f);
+        print_string(logo[r], 0x0f);
+        print_string("\n", 0x0f);
+    }
+
+    print_string("\n   ", 0x0f);
+    print_string("Void Shell OS", 0x0b);
+    print_string("   v", 0x08);
+    print_string(vsos_config.version, 0x0a);
+    print_string("   i386", 0x08);
+    print_string("\n   ", 0x0f);
+
+    /* CP437 0xC4: a single horizontal rule, cleaner than a row of dashes */
+    for (int i = 0; i < LOGO_WIDTH; i++) print_char((char) 0xC4, 0x08);
+    print_string("\n\n", 0x0f);
+}
+
 static void print_prompt(void) {
     char path[64];
     fs_pwd(path, sizeof(path));
@@ -23,12 +57,7 @@ void kernel_main(void) {
     clear_screen();
     config_load();
 
-    print_string("========================================\n", 0x0b);
-    print_string(" VSOS - Void Shell OS\n", 0x0f);
-    print_string("========================================\n", 0x0b);
-    print_string("kernel loaded : v", 0x0a);
-    print_string(vsos_config.version, 0x0a);
-    print_string(" (shell + declarative config + disk-backed filesystem)\n\n", 0x0a);
+    print_banner();
 
     idt_install();
     pic_remap();

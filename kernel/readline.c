@@ -142,8 +142,21 @@ static int complete(char *buf, int len, int max_len) {
 }
 
 void readline(char *out, int max_len, int flags) {
+    readline_edit(out, max_len, flags, 0);
+}
+
+void readline_edit(char *out, int max_len, int flags, const char *initial) {
     int len = 0;
     out[0] = 0;
+
+    if (initial) {
+        while (initial[len] && len < max_len - 1) {
+            out[len] = initial[len];
+            print_char(out[len], 0x0f);
+            len++;
+        }
+        out[len] = 0;
+    }
 
     int browse = -1;            /* -1 means "the line I'm typing" */
     char saved[HIST_LEN];

@@ -11,6 +11,11 @@
 
 void readline(char *out, int max_len, int flags);
 
+/* Same, but the line starts out containing `initial`, already echoed and
+ * ready to be edited or backspaced away. For offering existing text back
+ * for correction instead of making the user retype it. */
+void readline_edit(char *out, int max_len, int flags, const char *initial);
+
 /* How to reprint the prompt. Completion needs it: when several matches
  * exist it lists them on a fresh line and then has to redraw the prompt
  * and the half-typed line. Without a hook set, it lists nothing. */

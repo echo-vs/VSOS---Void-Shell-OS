@@ -77,15 +77,39 @@ static void print_lines(const char *buf, int len) {
     }
 }
 
+/* how many lines, and how close the file is to the one-sector ceiling -
+ * without this the only warning you get is a line being dropped */
+static void print_status(const char *buf, int len) {
+    char numbuf[12];
+    int lines = 0;
+    for (int i = 0; i < len; i++) {
+        if (buf[i] == '\n') lines++;
+    }
+    if (len > 0 && buf[len - 1] != '\n') lines++;
+
+    print_string("  ", 0x08);
+    vs_itoa((unsigned int) lines, numbuf);
+    print_string(numbuf, 0x08);
+    print_string(lines == 1 ? " line, " : " lines, ", 0x08);
+    vs_itoa((unsigned int) len, numbuf);
+    print_string(numbuf, 0x08);
+    print_string("/", 0x08);
+    vs_itoa((unsigned int) (FS_FILE_SIZE - 1), numbuf);
+    print_string(numbuf, 0x08);
+    print_string(" bytes\n", 0x08);
+}
+
 static void print_help(void) {
-    print_string("  <text>   append a line\n", 0x07);
+    print_string("  <text>   append a line at the end\n", 0x07);
     print_string("  :p       print the file with line numbers\n", 0x07);
+    print_string("  :i N     insert a new line before line N\n", 0x07);
+    print_string("  :e N     edit line N (its text is offered back to you)\n", 0x07);
     print_string("  :d N     delete line N\n", 0x07);
-    print_string("  :e N     replace line N (prompts for new text)\n", 0x07);
     print_string("  :c       clear the whole file\n", 0x07);
-    print_string("  :help    this message\n", 0x07);
+    print_string("  :s       save and keep editing\n", 0x07);
     print_string("  :w / --  save and exit\n", 0x07);
     print_string("  :q       exit without saving\n", 0x07);
+    print_string("  :help    this message\n", 0x07);
 }
 
 void vedit_run(const char *filename) {
@@ -110,6 +134,7 @@ void vedit_run(const char *filename) {
     print_string(filename, 0x0f);
     print_string("' - :help for commands\n", 0x0f);
     print_lines(buf, len);
+    print_status(buf, len);
 
     char line[128];
     while (1) {
@@ -130,8 +155,18 @@ void vedit_run(const char *filename) {
             return;
         }
 
+        if (vs_strcmp(line, ":s") == 0) {
+            if (fs_write(filename, buf, (unsigned int) len)) {
+                print_string("vedit: saved\n", 0x0a);
+            } else {
+                print_string("vedit: save failed\n", 0x0c);
+            }
+            continue;
+        }
+
         if (vs_strcmp(line, ":p") == 0) {
             print_lines(buf, len);
+            print_status(buf, len);
             continue;
         }
 
@@ -166,9 +201,22 @@ void vedit_run(const char *filename) {
                 print_string("vedit: no such line\n", 0x0c);
                 continue;
             }
-            print_string("new text> ", 0x0b);
+
+            /* hand the current text back so it can be corrected in place
+             * rather than retyped from scratch */
+            char current[128];
+            int cur_len = e - s;
+            if (cur_len > 0 && buf[s + cur_len - 1] == '\n') cur_len--;
+            if (cur_len > (int) sizeof(current) - 1) cur_len = (int) sizeof(current) - 1;
+            for (int i = 0; i < cur_len; i++) current[i] = buf[s + i];
+            current[cur_len] = 0;
+
+            print_string("line ", 0x0b);
+            print_string(line + 3, 0x0b);
+            print_string("> ", 0x0b);
+
             char newline[128];
-            wait_for_line(newline, sizeof(newline));
+            readline_edit(newline, sizeof(newline), 0, current);
             int nl_len = (int) vs_strlen(newline);
 
             char ins[130];
@@ -179,6 +227,32 @@ void vedit_run(const char *filename) {
                 print_string("vedit: line replaced\n", 0x0e);
             } else {
                 print_string("vedit: replacement too big, line unchanged\n", 0x0c);
+            }
+            continue;
+        }
+
+        if (vs_strncmp(line, ":i ", 3) == 0) {
+            int n = (int) vs_atoi(line + 3);
+            int s, e;
+            if (!find_line(buf, len, n, &s, &e)) {
+                print_string("vedit: no such line (append with plain text)\n", 0x0c);
+                continue;
+            }
+
+            print_string("insert> ", 0x0b);
+            char newline[128];
+            wait_for_line(newline, sizeof(newline));
+            int nl_len = (int) vs_strlen(newline);
+
+            char ins[130];
+            for (int i = 0; i < nl_len; i++) ins[i] = newline[i];
+            ins[nl_len] = '\n';
+
+            /* an empty range at the start of line N: pure insertion */
+            if (splice(buf, &len, s, s, ins, nl_len + 1)) {
+                print_string("vedit: line inserted\n", 0x0e);
+            } else {
+                print_string("vedit: file full, nothing inserted\n", 0x0c);
             }
             continue;
         }
