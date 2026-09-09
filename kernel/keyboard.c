@@ -13,6 +13,10 @@
 #define KBD_DATA_PORT 0x60
 #define QUEUE_SIZE 32
 
+/* Two tables, indexed by the same scancodes: which one applies depends on
+ * whether a shift key is currently held. Entry N of one is the unshifted
+ * face of the key whose shifted face is entry N of the other, so they
+ * must be kept aligned line for line. */
 static const char scancode_ascii[128] = {
     0,  27, '1','2','3','4','5','6','7','8','9','0','-','=', '\b',
     '\t','q','w','e','r','t','y','u','i','o','p','[',']', '\n',
@@ -20,6 +24,21 @@ static const char scancode_ascii[128] = {
     0, '\\','z','x','c','v','b','n','m',',','.','/', 0,
     '*', 0, ' ', 0,
 };
+
+static const char scancode_shift[128] = {
+    0,  27, '!','@','#','$','%','^','&','*','(',')','_','+', '\b',
+    '\t','Q','W','E','R','T','Y','U','I','O','P','{','}', '\n',
+    0, 'A','S','D','F','G','H','J','K','L',':','"','~',
+    0, '|','Z','X','C','V','B','N','M','<','>','?', 0,
+    '*', 0, ' ', 0,
+};
+
+#define SC_LSHIFT 0x2A
+#define SC_RSHIFT 0x36
+#define SC_CAPS   0x3A
+
+static volatile int shift_down = 0;
+static volatile int caps_on = 0;
 
 /* single producer (the ISR) writes head, single consumer reads tail, so
  * no locking is needed between them */
@@ -62,8 +81,32 @@ void keyboard_handler(struct interrupt_frame *frame) {
         return;
     }
 
-    if (!(scancode & 0x80)) {
-        char c = (scancode < 128) ? scancode_ascii[scancode] : 0;
+    unsigned char code = scancode & 0x7F;
+    int released = scancode & 0x80;
+
+    /* Modifiers are the one case where the release matters: everything
+     * else is ignored on release, but shift has to be un-held. */
+    if (code == SC_LSHIFT || code == SC_RSHIFT) {
+        shift_down = released ? 0 : 1;
+        outb(0x20, 0x20);
+        return;
+    }
+    if (code == SC_CAPS) {
+        if (!released) caps_on = !caps_on;
+        outb(0x20, 0x20);
+        return;
+    }
+
+    if (!released) {
+        char c = shift_down ? scancode_shift[code] : scancode_ascii[code];
+
+        /* caps lock is not shift: it only swaps the case of letters, and
+         * shift on top of it swaps them back */
+        if (caps_on) {
+            if (c >= 'a' && c <= 'z') c = (char) (c - 'a' + 'A');
+            else if (c >= 'A' && c <= 'Z') c = (char) (c - 'A' + 'a');
+        }
+
         if (c) queue_push((int) (unsigned char) c);
     }
 

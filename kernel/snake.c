@@ -142,6 +142,9 @@ void snake_run(void) {
         int k = 0;
         for (int q = keyboard_poll(); q != 0; q = keyboard_poll()) k = q;
 
+        /* accept WASD as well as wasd: caps lock shouldn't break steering */
+        if (k >= 'A' && k <= 'Z') k = k - 'A' + 'a';
+
         if (k == 'q') {
             quit = 1;
             break;
