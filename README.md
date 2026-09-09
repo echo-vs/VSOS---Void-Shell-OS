@@ -39,6 +39,37 @@ What caps it at 48 now is **memory**, not the disk. The kernel lands at `0x1000`
 
 Check the commands: `help`, `ls', `cat vsos.conf`, `cat motd.txt `, `cat hostname`, `echo hello`, `uname`, `whoami`, `mkdir`, `touch`, `rm`, `cd`, `vedit`, `sync`, `clear`, `reboot`. Try `mkdir docs && cd docs && touch notes.txt && vedit notes.txt`, then `reboot` and `cat docs/notes.txt` again — it's still there.
 
+## VSPL — Void Shell Programming Language
+
+Scripts are files of ordinary VSOS commands plus variables, conditions and loops. Write one with `vedit`, run it with `run`. A fresh install ships `demo.vs` as a worked example.
+
+```
+# a comment
+set name VSOS
+echo hello from $name
+
+set i 1
+while $i <= 3
+  echo counting $i
+  set i $i + 1
+end
+
+if $i > 3
+  echo done
+else
+  echo unreachable
+end
+```
+
+The whole language is `set`, `if`/`else`/`end` and `while`/`end`. **Everything else on a line is handed to the shell**, so `mkdir $dir`, `cat $file` and every other command work inside a script without the interpreter knowing anything about them. That is deliberate: the language borrows the shell's vocabulary instead of growing a standard library of its own.
+
+Details worth knowing:
+- values are text; `+ - * /` and `< > <= >=` read both sides as numbers, `==` and `!=` fall back to comparing text
+- a `$name` that was never `set` is an error, not an empty string, because silently expanding a typo to nothing produces scripts that misbehave for no visible reason
+- **Esc stops a running script.** There is no preemption here, so an endless loop has no other way out
+- variables persist between scripts, but the interactive prompt doesn't expand `$` - that happens in the interpreter, not in the shell
+- limits: 16 variables, 64 lines per script, blocks 8 deep, scripts nested 4 deep. A script is a file, so it is also capped at one 512-byte sector
+
 ## Debugging (if something is hanging on loading)
 
 There are checkpoints in `disk_load.asm`, `boot.asm` and `switch_to_pm.asm`. They print in this order, so the last letter you see is the step it died on:
@@ -92,6 +123,9 @@ VSOS/
     ├── keyboard.h / keyboard.c
     ├── config.h / config.c
     ├── ata.h / ata.c        (ATA PIO disk driver)
+    ├── vspl.h / vspl.c      (the VSPL script interpreter)
+    ├── readline.h / readline.c (line editing, history, Tab completion)
+    ├── snake.h / snake.c    (`snakeplay`)
     ├── fs.h / fs.c          (the filesystem: tree + disk persistence)
     ├── vfs.h / vfs.c        (seeds default files into fs.c on first boot)
     ├── editor.h / editor.c  (vedit, works on fs.c files)

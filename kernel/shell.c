@@ -5,6 +5,7 @@
 #include "editor.h"
 #include "fs.h"
 #include "snake.h"
+#include "vspl.h"
 #include "string.h"
 #include "io.h"
 
@@ -35,6 +36,7 @@ static void cmd_help(const char *arg) {
 
     print_string("shell\n", 0x0e);
     print_string("  echo TEXT        print text\n", 0x07);
+    print_string("  run SCRIPT       run a VSPL script (set/if/while + any command)\n", 0x07);
     print_string("  help             this message\n", 0x07);
 }
 
@@ -226,6 +228,15 @@ static void cmd_vedit(const char *arg) {
     vedit_run(arg);
 }
 
+static void cmd_run(const char *arg) {
+    skip_spaces(&arg);
+    if (*arg == 0) {
+        print_string("run: usage: run <script>\n", 0x0c);
+        return;
+    }
+    vspl_run_file(arg);
+}
+
 static void cmd_snakeplay(const char *arg) {
     (void) arg;
     snake_run();
@@ -253,6 +264,7 @@ static const shell_cmd_t commands[] = {
     { "cd",     cmd_cd,     0 },
     { "sync",   cmd_sync,   0 },
     { "fetch",  cmd_fetch,  0 },
+    { "run",    cmd_run,    0 },
     { "snakeplay", cmd_snakeplay, 1 },
 };
 static const int command_count = sizeof(commands) / sizeof(commands[0]);
